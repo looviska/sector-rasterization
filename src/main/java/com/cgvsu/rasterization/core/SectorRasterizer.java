@@ -3,8 +3,9 @@ package com.cgvsu.rasterization.core;
 /**
  * Растеризация сектора окружности.
  *
- * Идея: ограничить фигуру прямоугольником (bounding box), пробежать по всем
- * его пикселям и закрасить только те, что лежат внутри исходной фигуры.
+ * Идея: ограничить фигуру прямоугольником (bounding box) и закрасить только те
+ * пиксели, что лежат внутри исходной фигуры. Чтобы не проверять лишние пиксели
+ * вне круга, используется scanline: для каждой строки считаются границы хорды.
  * Пиксель принадлежит сектору, если он внутри круга и лежит между
  * лучами OA и OB (проверка через знаки векторных произведений).
  *
@@ -54,11 +55,11 @@ public final class SectorRasterizer {
         double bx = Math.cos(Math.toRadians(startDeg + sweepDeg));
         double by = Math.sin(Math.toRadians(startDeg + sweepDeg));
 
-        for (int x = xc - r; x <= xc + r; x++) {
-            for (int y = yc - r; y <= yc + r; y++) {
-                if (!insideCircle(x, y, xc, yc, r)) {
-                    continue;
-                }
+        // Идея scanline: главная ось - y. Для каждой строки сразу известны границы
+        // хорды круга, поэтому пиксели вне круга даже не проверяются.
+        for (int y = yc - r; y <= yc + r; y++) {
+            int half = halfChord(y - yc, r);
+            for (int x = xc - half; x <= xc + half; x++) {
                 // Вектор OP в математической системе координат (y вверх).
                 double vx = x - xc;
                 double vy = -(y - yc);
@@ -67,6 +68,26 @@ public final class SectorRasterizer {
                 }
             }
         }
+    }
+
+    /**
+     * Половина длины хорды круга на расстоянии dy от центра:
+     * наибольшее целое h, для которого h^2 + dy^2 &lt;= r^2.
+     * Считается в целых числах: sqrt даёт приближение, затем оно уточняется.
+     */
+    static int halfChord(int dy, int r) {
+        long n = (long) r * r - (long) dy * dy;
+        if (n < 0) {
+            return -1; // строка вне круга: цикл по x не выполнится
+        }
+        long h = (long) Math.sqrt((double) n);
+        while (h * h > n) {
+            h--;
+        }
+        while ((h + 1) * (h + 1) <= n) {
+            h++;
+        }
+        return (int) h;
     }
 
     /**
@@ -122,12 +143,5 @@ public final class SectorRasterizer {
         double m = cross(ax, ay, vx, vy);
         double n = cross(vx, vy, bx, by);
         return m >= -EPS && n >= -EPS;
-    }
-
-    /** Условие (x - xc)^2 + (y - yc)^2 <= r^2 в целых числах (без sqrt и ошибок округления). */
-    static boolean insideCircle(int x, int y, int xc, int yc, int r) {
-        long dx = x - xc;
-        long dy = y - yc;
-        return dx * dx + dy * dy <= (long) r * r;
     }
 }

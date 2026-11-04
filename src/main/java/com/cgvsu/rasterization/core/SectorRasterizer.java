@@ -27,13 +27,14 @@ public final class SectorRasterizer {
      * @param yc       y центра
      * @param r        радиус в пикселях
      * @param startDeg угол луча OA в градусах
-     * @param sweepDeg раствор сектора в градусах (от OA к OB против часовой стрелки), не более 180
+     * @param sweepDeg раствор сектора в градусах (от OA к OB против часовой стрелки).
+     *                 Значение {@code <= 0} - ничего не рисуется, {@code >= 360} - полный круг
      * @param color    цвет заливки
      */
     public static void fillSector(PixelSink sink, int xc, int yc, int r,
                                   double startDeg, double sweepDeg, int color) {
-        if (sweepDeg > 180) {
-            throw new IllegalArgumentException("Пока поддерживаются секторы не больше 180 градусов");
+        if (sweepDeg <= 0 || r < 0) {
+            return;
         }
         double ax = Math.cos(Math.toRadians(startDeg));
         double ay = Math.sin(Math.toRadians(startDeg));
@@ -48,7 +49,7 @@ public final class SectorRasterizer {
                 // Вектор OP в математической системе координат (y вверх).
                 double vx = x - xc;
                 double vy = -(y - yc);
-                if (insideSmallSector(ax, ay, bx, by, vx, vy)) {
+                if (insideSector(sweepDeg, ax, ay, bx, by, vx, vy)) {
                     sink.setPixel(x, y, color);
                 }
             }
@@ -58,6 +59,31 @@ public final class SectorRasterizer {
     /** Z-компонента векторного произведения (ax, ay) x (bx, by). */
     static double cross(double ax, double ay, double bx, double by) {
         return ax * by - ay * bx;
+    }
+
+    /**
+     * Принадлежность вектора v сектору с раствором sweepDeg.
+     * <ul>
+     *   <li>sweep &gt;= 360: сектор - весь круг, угол не проверяется;</li>
+     *   <li>sweep &lt;= 180: прямая проверка между OA и OB;</li>
+     *   <li>sweep &gt; 180: векторные произведения "между" работают только для углов
+     *       меньше развёрнутого, поэтому проверяем дополнение: точка принадлежит
+     *       сектору, если она НЕ лежит строго внутри сектора от OB к OA
+     *       (его раствор 360 - sweep &lt; 180). Точки на лучах остаются в секторе.</li>
+     * </ul>
+     */
+    static boolean insideSector(double sweepDeg, double ax, double ay, double bx, double by,
+                                double vx, double vy) {
+        if (sweepDeg >= 360) {
+            return true;
+        }
+        if (sweepDeg <= 180) {
+            return insideSmallSector(ax, ay, bx, by, vx, vy);
+        }
+        double m = cross(bx, by, vx, vy);   // V слева от B
+        double n = cross(vx, vy, ax, ay);   // A слева от V
+        boolean strictlyInComplement = m > EPS && n > EPS;
+        return !strictlyInComplement;
     }
 
     /**

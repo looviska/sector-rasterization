@@ -23,16 +23,29 @@ public final class SectorRasterizer {
     /**
      * Заливает сектор одним цветом.
      *
-     * @param xc       x центра
-     * @param yc       y центра
-     * @param r        радиус в пикселях
-     * @param startDeg угол луча OA в градусах
-     * @param sweepDeg раствор сектора в градусах (от OA к OB против часовой стрелки).
-     *                 Значение {@code <= 0} - ничего не рисуется, {@code >= 360} - полный круг
-     * @param color    цвет заливки
+     * @see #fillSector(PixelSink, int, int, int, double, double, int, int)
      */
     public static void fillSector(PixelSink sink, int xc, int yc, int r,
                                   double startDeg, double sweepDeg, int color) {
+        fillSector(sink, xc, yc, r, startDeg, sweepDeg, color, color);
+    }
+
+    /**
+     * Заливает сектор с линейной интерполяцией цвета от центра к дуге:
+     * c = centerColor + t * (edgeColor - centerColor), где t = dist / r.
+     *
+     * @param xc          x центра
+     * @param yc          y центра
+     * @param r           радиус в пикселях
+     * @param startDeg    угол луча OA в градусах
+     * @param sweepDeg    раствор сектора в градусах (от OA к OB против часовой стрелки).
+     *                    Значение {@code <= 0} - ничего не рисуется, {@code >= 360} - полный круг
+     * @param centerColor цвет в центре круга (ARGB)
+     * @param edgeColor   цвет на дуге окружности (ARGB)
+     */
+    public static void fillSector(PixelSink sink, int xc, int yc, int r,
+                                  double startDeg, double sweepDeg,
+                                  int centerColor, int edgeColor) {
         if (sweepDeg <= 0 || r < 0) {
             return;
         }
@@ -50,10 +63,23 @@ public final class SectorRasterizer {
                 double vx = x - xc;
                 double vy = -(y - yc);
                 if (insideSector(sweepDeg, ax, ay, bx, by, vx, vy)) {
-                    sink.setPixel(x, y, color);
+                    sink.setPixel(x, y, colorAt(x, y, xc, yc, r, centerColor, edgeColor));
                 }
             }
         }
+    }
+
+    /**
+     * Цвет пикселя при линейной интерполяции по расстоянию от центра.
+     * Зависимость линейная, поэтому доля пройденного пути t = dist / r
+     * применяется одинаково ко всем каналам цвета.
+     */
+    static int colorAt(int x, int y, int xc, int yc, int r, int centerColor, int edgeColor) {
+        if (r == 0) {
+            return centerColor;
+        }
+        double dist = Math.hypot(x - xc, y - yc);
+        return ColorUtils.lerp(centerColor, edgeColor, dist / r);
     }
 
     /** Z-компонента векторного произведения (ax, ay) x (bx, by). */
